@@ -1,0 +1,103 @@
+# Full local stack: PostgreSQL, Redis, API, workflow worker, dashboard and the sandbox image.
+#   docker compose build sandbox && docker compose up --build
+# Secrets come from ./.env (see .env.example); nothing secret is hard-coded here.
+name: agentforge
+
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  DATABASE_URL: postgresql+asyncpg://agentforge:${POSTGRES_PASSWORD:-agentforge}@postgres:5432/agentforge
+  REDIS_URL: redis://redis:6379/0
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+  CORS_ORIGINS: ${FRONTEND_URL:-http://localhost:3000}
+  WORKSPACES_ROOT: /data/workspaces
+  SANDBOX_BACKEND: docker
+  SANDBOX_IMAGE: agentforge-sandbox:latest
+  SANDBOX_HOST_WORKSPACES_ROOT: ${PWD}/.data/workspaces
+  DOCKER_HOST: tcp://docker-proxy:2375
+  DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-anthropic}
+  DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-claude-opus-5-5}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-http://localhost:8000/api/github/oauth/callback}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentforge}
+      POSTGRES_DB: agentforge
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentforge"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  # The worker never gets the raw Docker socket: this proxy only exposes the container API.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      EXEC: 0
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+
+  api:
+    build: ./backend
+    environment:
+      <<: *backend-env
+      WORKER_MODE: external
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-env
+      WORKER_MODE: external
+    volumes: ["${PWD}/.data/workspaces:/data/workspaces"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      api: {condition: service_healthy}
+      docker-proxy: {condition: service_started}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000/api}
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+  # Build-only service that produces the sandbox image used by the worker.
+  sandbox:
+    build: ./sandbox
+    image: agentforge-sandbox:latest
+    profiles: ["build"]
+
+  # Optional tracing UI: docker compose --profile observability up
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment: {COLLECTOR_OTLP_ENABLED: "true"}
+    ports: ["16686:16686", "4318:4318"]
+    profiles: ["observability"]
+
+volumes:
+  pgdata:
