@@ -1,0 +1,65 @@
+rules:
+  - id: jwt-decode-without-verification
+    languages: [python]
+    severity: ERROR
+    message: JWT decoded without signature verification. Pass the key and `algorithms=[...]`.
+    metadata: {cwe: "CWE-347"}
+    pattern-either:
+      - pattern: jwt.decode(..., options={..., "verify_signature": False, ...}, ...)
+      - pattern: jwt.decode(..., verify=False, ...)
+  - id: jwt-none-algorithm
+    languages: [python]
+    severity: ERROR
+    message: The "none" JWT algorithm disables signature checks.
+    metadata: {cwe: "CWE-327"}
+    pattern: jwt.decode(..., algorithms=[..., "none", ...], ...)
+  - id: sql-fstring-execute
+    languages: [python]
+    severity: ERROR
+    message: SQL built with string formatting; use bound parameters.
+    metadata: {cwe: "CWE-89"}
+    pattern-either:
+      - pattern: $CONN.execute(f"...", ...)
+      - pattern: $CONN.execute("..." % ..., ...)
+      - pattern: $CONN.execute("..." + ..., ...)
+      - pattern: text(f"...")
+  - id: subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: subprocess with shell=True enables command injection.
+    metadata: {cwe: "CWE-78"}
+    pattern: subprocess.$F(..., shell=True, ...)
+  - id: insecure-random-for-secrets
+    languages: [python]
+    severity: WARNING
+    message: The `random` module is not cryptographically secure; use `secrets`.
+    metadata: {cwe: "CWE-338"}
+    pattern-either:
+      - pattern: random.choice(...)
+      - pattern: random.randint(...)
+      - pattern: random.random()
+  - id: requests-verify-false
+    languages: [python]
+    severity: ERROR
+    message: TLS verification disabled.
+    metadata: {cwe: "CWE-295"}
+    pattern: requests.$M(..., verify=False, ...)
+  - id: cors-wildcard-with-credentials
+    languages: [python]
+    severity: ERROR
+    message: CORS allows any origin together with credentials.
+    metadata: {cwe: "CWE-942"}
+    pattern: CORSMiddleware(..., allow_origins=["*"], ..., allow_credentials=True, ...)
+  - id: weak-password-hash
+    languages: [python]
+    severity: ERROR
+    message: Fast hashes (md5/sha1/sha256) must not be used for passwords; use argon2id or bcrypt.
+    metadata: {cwe: "CWE-916"}
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5($X)
+          - pattern: hashlib.sha1($X)
+          - pattern: hashlib.sha256($X)
+      - metavariable-regex:
+          metavariable: $X
+          regex: (?i).*passw.*
