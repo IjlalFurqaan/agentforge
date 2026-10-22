@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --canvas: 248 250 252;
+  --panel: 255 255 255;
+  --raised: 241 245 249;
+  --line: 226 232 240;
+  --ink: 15 23 42;
+  --muted: 100 116 139;
+  --accent: 79 70 229;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: 9 11 17;
+    --panel: 17 20 29;
+    --raised: 26 30 42;
+    --line: 39 45 61;
+    --ink: 226 232 240;
+    --muted: 139 148 168;
+    --accent: 129 140 248;
+    color-scheme: dark;
+  }
+}
+
+html,
+body {
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
+}
+
+* {
+  border-color: rgb(var(--line));
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.25);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
